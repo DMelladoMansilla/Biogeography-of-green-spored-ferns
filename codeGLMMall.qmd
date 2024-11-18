@@ -1,0 +1,239 @@
+---
+title: "GlmmOverall"
+author: Daniela Mellado-Mansilla
+format: html
+editor: visual
+---
+
+## GLMM OVERALL Green-spores ferns
+
+This code shows how to performe the GLMM for the overall richness proportion of chlorophyllous-spored fern species. Here I used glmmTMB since richness is a proportion (values 0 to 1) and therefore, follows a beta distribution. I also include the code to test for spatial autocorrelation. For the analyses of epiphytic and terrestrial proportions I followed the same workflow.
+
+## Libraries
+
+```{r}
+pacman::p_load(dplyr,glmmTMB,doRNG,performance,readODS)
+```
+
+### Preparing data
+
+```{r}
+
+#Filter those GeoEntities where the richness of CS-Ferns is higher than 4 species
+green_spore2<-filter(green_spore2, green_spore >4)
+
+green_spore2$entity_ID<-as.numeric(as.character(green_spore2$entity_ID))
+
+#Add ses.mpd values
+mpd_overall2<-select(mpd_overall,entity_ID,mpd.obs.z, ntaxa)
+
+
+#join with GS richness data
+green_spore_overmpd<-left_join(green_spore2,mpd_overall2, by = "entity_ID")
+
+
+#Select the variables for the single models
+green_spore_overmpd<-select(green_spore_overmpd,mean_annual_temp,max_annual_temp,min_annual_temp, mean_Annual_Precipitation,max_Annual_Precipitation, min_Annual_Precipitation,
+mean_Ppt_Driest_Month,max_Ppt_Driest_Month,min_Ppt_Driest_Month,
+mean_Ppt_Seasonality,max_Ppt_Seasonality,min_Ppt_Seasonality,
+mean_Ppt_Warm_Qtr,min_Ppt_Warm_Qtr,max_Ppt_Warm_Qtr,
+max_Temp_Ann_Range,min_Temp_Ann_Range,mean_Temp_Ann_Range,
+min_Homogeneity,mean_Homogeneity,max_Homogeneity,
+mean_MODCF_meanannual,min_MODCF_meanannual,max_MODCF_meanannual,
+mean_aet_yr,min_aet_yr,max_aet_yr,elevational_range,
+mean_pet_he_yr, min_pet_he_yr,max_pet_he_yr,
+entity_class,mpd.obs.z,green_prop,entity_ID,green_spore,
+REALM,total_rich)
+
+
+#Check and filter the richness per REALM to a better fit of the model
+green_spore_overmpd <- green_spore_overmpd %>% group_by(REALM) %>% filter(n()>4) %>% ungroup()
+
+
+anyNA(green_spore_overmpd)
+#green_spore_overmpd<-na.omit(green_spore_overmpd)
+
+```
+
+## Single models to select best variables
+
+Select the list of predictor variables for each model and create a loop to fit a single GLM for each variable. The response variable is the proportion of CS species per geographic entity.
+
+```{r}
+
+sin_mod_prop <- foreach(env=list("mean_annual_temp","max_annual_temp","min_annual_temp", "mean_Annual_Precipitation","max_Annual_Precipitation", "min_Annual_Precipitation", "mean_Ppt_Driest_Month","max_Ppt_Driest_Month","min_Ppt_Driest_Month", "mean_Ppt_Seasonality","max_Ppt_Seasonality","min_Ppt_Seasonality", "mean_Ppt_Warm_Qtr","min_Ppt_Warm_Qtr","max_Ppt_Warm_Qtr", "max_Temp_Ann_Range","min_Temp_Ann_Range","mean_Temp_Ann_Range", "min_Homogeneity","mean_Homogeneity","max_Homogeneity", "mean_MODCF_meanannual","min_MODCF_meanannual","max_MODCF_meanannual", "mean_aet_yr","min_aet_yr","max_aet_yr",          "elevational_range", "mean_pet_he_yr", "min_pet_he_yr","max_pet_he_yr",
+"entity_class","mpd.obs.z")) %dorng% {
+base_formula <- formula(paste('green_prop ~ ', paste(env, collapse='+'), '+(1|REALM)'))
+                                   
+model_pgs <- glmmTMB(base_formula, data=green_spore_overmpd, na.action = "na.omit",family = beta_family(link="logit"))
+return(model_pgs)
+                                 }
+
+```
+
+### R2s table
+
+Create a table with the r2 of each single-model
+
+```{r}
+table_gs_prop2<- foreach(mod=sin_mod_prop, .combine = "rbind") %do% {
+  m <- insight::get_variance(mod)
+  r2_marginal <- m$var.fixed / (m$var.fixed + m$var.random + m$var.residual)
+  r2_conditional <- (m$var.fixed + m$var.random) / (m$var.fixed + m$var.random + m$var.residual)
+  r2_marginal$name <- as.character(mod[["call"]][["formula"]][[3]][[2]])
+  return(r2_marginal)
+}
+
+#Write table and export
+table_gs_prop2<-as.data.frame(table_gs_prop2)
+
+write_ods(table_gs_prop2, "table_gs_propdic.ods")
+
+
+```
+
+### Ranking of variables
+
+Create a new data set with the variables ranked by the highest R2
+
+```{r}
+green_spore_overmpd2<- green_spore_overmpd %>% 
+  select("max_pet_he_yr","max_annual_temp","mean_Ppt_Seasonality", "max_aet_yr","mean_MODCF_meanannual", "max_Temp_Ann_Range","mean_Ppt_Driest_Month","mean_Homogeneity","elevational_range","max_Ppt_Warm_Qtr","mean_Annual_Precipitation","REALM","entity_class","entity_ID","green_prop","mpd.obs.z","green_spore","total_rich") %>% 
+  na.omit()
+
+#green_spore_overmpd2<-na.omit(green_spore_overmpd2)
+
+```
+
+### Check for correlations
+
+Create a correlation matrix and drop all variables with a Pearson correlation coefficient \>0.5
+
+```{r}
+library(GGally)
+
+ggpairs(green_spore_overmpd2,columns =c(1:11))
+
+```
+
+## Create model
+
+Create the model with the selected variables using the correlation test and check model performance
+
+```{r}
+gs_overprop_model2<-glmmTMB(green_prop ~ max_pet_he_yr+ max_annual_temp+mean_Ppt_Seasonality+max_aet_yr+mean_MODCF_meanannual+ mpd.obs.z+entity_class+max_Temp_Ann_Range+mean_Ppt_Driest_Month+ mean_Homogeneity+elevational_range+max_Ppt_Warm_Qtr+mean_Annual_Precipitation+(1|REALM), data=green_spore_overmpd2, na.action=na.fail,family = beta_family(link="logit"))
+
+
+performance::check_model(gs_overprop_model2)
+
+```
+
+## Step-wise selection
+
+### Libraries
+
+```{r}
+pacman::p_load(buildmer,MuMIn)
+```
+
+```{r}
+
+step_grp<-MuMIn::dredge(gs_overprop_model2)
+
+#Subsets the models to include only those with a ΔAIC less than 4
+stepdelta<-subset(step_grp, delta < 4)
+
+#'Best' model
+summary(get.models(step_grp, 1)[[1]])
+
+#Fit the generalized linear mixed model (GLMM)
+gs_overprop_finalmod<-glmmTMB(green_prop ~ max_annual_temp + max_Temp_Ann_Range + mean_Annual_Precipitation +  
+mean_Ppt_Seasonality + mpd.obs.z +  entity_class+(1 | REALM), data=green_spore_overmpd2, na.action=na.fail,family = beta_family(link="logit"))
+
+```
+
+### Model diagnostic and R2s
+
+```{r}
+check_model(gs_overprop_finalmod)
+m <- insight::get_variance(gs_overprop_finalmod)
+r2_conditional <- (m$var.fixed + m$var.random) / (m$var.fixed + m$var.random + m$var.residual)
+r2_conditional
+#0.6627273-0.6393573
+r2_marginal <- m$var.fixed / (m$var.fixed + m$var.random + m$var.residual)
+r2_marginal
+#0.6100755-0.5935617
+
+
+summary(gs_overprop_finalmod)
+```
+
+## Test spatial-autocorrelation
+
+### Libraries
+
+```{r}
+pacman::p_load(spdep, spatialreg,foreach,car,DHARMa,doRNG,dplyr,spdplyr,RDS)
+```
+
+```{r}
+
+#Upload the model's data
+green_spore_overmpd3<- green_spore_overmpd2
+
+
+#Upload the geometry
+geoentities_simple2<-readRDS("geoentities_simple.rds") %>% 
+  st_as_sf() %>%
+  st_drop_geometry()
+
+#Join Data with Geometric Information
+green_spore_overmpdgeo <- geoentities_simple2 %>%
+  select(entity_ID, point_x, point_y) %>%
+  inner_join(.,green_spore_overmpd3, by="entity_ID")
+
+anyNA(green_spore_overmpdgeo)
+
+
+#Create a numerical factor based on the coordinates (point_x, point_y), parse its levels, and scale the coordinates for spatial analysis
+pos <- numFactor(green_spore_overmpdgeo3$point_x,green_spore_overmpdgeo3$point_y)
+parseNumLevels(levels(pos))
+green_spore_overmpdgeo3$pos<-numFactor(scale(green_spore_overmpdgeo3$point_x), 
+                                       scale(green_spore_overmpdgeo3$point_y))
+
+
+#Fit model
+HL1<-glmmTMB(green_prop ~ max_annual_temp + max_Temp_Ann_Range + mean_Annual_Precipitation +  mean_Ppt_Seasonality + mpd.obs.z + entity_class+(1 | REALM), data=green_spore_overmpdgeo, na.action=na.fail,family = beta_family(link="logit"))
+
+#Simulate residuals
+res<-simulateResiduals(HL1)
+
+#Recalculate residuals by group
+simulationOutput2 = recalculateResiduals(res, group = green_spore_overmpdgeo$REALM)
+
+#Add locations
+groupLocations = aggregate(green_spore_overmpdgeo[, 2:3], list(green_spore_overmpdgeo$REALM), mean)
+
+# Test
+testSpatialAutocorrelation(simulationOutput2, x =  groupLocations$point_x, y = groupLocations$point_y, plot=F)
+
+#observed = 0.036121, expected = -0.166667, sd = 0.133406, p-value = 0.1285
+#alternative hypothesis: Distance-based autocorrelation
+
+final_overprop_geo<-HL1
+
+
+#Model performance
+summary(final_overprop_geo)
+check_model(final_overprop_geo)
+m <- insight::get_variance(final_overprop_geo)
+r2_conditional <- (m$var.fixed + m$var.random) / (m$var.fixed + m$var.random + m$var.residual)
+r2_conditional
+#0.6646631-0.7014573
+r2_marginal <- m$var.fixed / (m$var.fixed + m$var.random + m$var.residual)
+r2_marginal
+#0.5374723-0.3864215
+
+
+
+```
