@@ -1,13 +1,34 @@
 ---
 title: "GlmmOverall"
 author: Daniela Mellado-Mansilla
-format: html
+format:
+    html:
+      toc-title: Table of contents
+      toc: true
+      toc-depth: 2
+      number-sections: false
+      highlight-style: github
+      toc-location: left
+      cap-location: top
+      page-layout: full
+      embed-resources: true
+      self-contained-math: true
+      toc-expand: true
+output: 
+  html_document: 
+  output_file: index.html
 editor: visual
+execute: 
+  eval: false
 ---
 
-## GLMM OVERALL Green-spores ferns
+## GLMM OVERALL Green-spored ferns
 
-This code shows how to performe the GLMM for the overall richness proportion of chlorophyllous-spored fern species. Here I used glmmTMB since richness is a proportion (values 0 to 1) and therefore, follows a beta distribution. I also include the code to test for spatial autocorrelation. For the analyses of epiphytic and terrestrial proportions I followed the same workflow.
+This code shows how to perform the GLMM for the overall richness proportion of chlorophyllous-spored fern species. This analysis was included in the study "[GLOBAL BIOGEOGRAPHY AND EVOLUTIONARY DRIVERS OF FERNS WITH CHLOROPHYLLOUS SPORES"](https://www.biorxiv.org/content/10.1101/2024.11.18.624067v1).
+
+Here I used glmmTMB since richness is a proportion (values 0 to 1) and therefore, follows a beta distribution. I also include the code to test for spatial autocorrelation. For the analyses of epiphytic and terrestrial proportions I followed the same workflow.
+
+[![](images/Global-distribution-of-ferns-with-chlorophyllous-spores-Only-proportions-of-geographic_W640.jpg)](https://www.biorxiv.org/content/10.1101/2024.11.18.624067v1)
 
 ## Libraries
 
@@ -237,3 +258,5 @@ r2_marginal
 
 
 ```
+
+[![Fig. 3 from Mellado-Mansilla et al. 2024. Coefficients plot of the three final GLMMs for chlorophyllous-spored species proportions.](images/Coefficients-plot-of-the-three-final-GLMMs-for-chlorophyllous-spored-species-proportions_W640.jpg)](https://www.biorxiv.org/content/10.1101/2024.11.18.624067v1)
